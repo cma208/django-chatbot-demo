@@ -27,8 +27,13 @@ SECRET_KEY = 'django-insecure-$k-udkdymsxp*(gq5cwnvdagv+)pu9v+ozj85x@=vfxzt#=^#7
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
+# Path to FAISS index
+FAISS_INDEX_PATH = os.path.join(BASE_DIR, 'faiss_data/faiss_index_file.index')
+
+# OpenAI API Key
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 # Application definition
 
@@ -81,6 +86,14 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
     }
+    # 'default': {
+    #     'ENGINE': 'django.db.backends.postgresql',
+    #     'NAME': os.getenv('DB_NAME'),
+    #     'USER': os.getenv('DB_USER'),
+    #     'PASSWORD': os.getenv('DB_PASSWORD'),
+    #     'HOST': os.getenv('DB_HOST'),
+    #     'PORT': '5432',
+    # }
 }
 
 

@@ -15,17 +15,30 @@ openai_api_key = os.getenv("OPENAI_API_KEY")
 
 # Load documents and create FAISS index
 def load_and_index_documents():
-    # Load documents (e.g., PDF and TXT)
-    pdf_loader = PyPDFLoader("example.pdf")
-    txt_loader = TextLoader("example.txt")
-    
-    documents = pdf_loader.load_and_split() + txt_loader.load()
+    # Define the directory where the files are located
+    files_dir = "files"  # The 'files' directory from your tree
 
-    # Split documents into chunks
+    documents = []
+
+    # Iterate through each file in the directory
+    for filename in os.listdir(files_dir):
+        file_path = os.path.join(files_dir, filename)
+        
+        if filename.endswith(".pdf"):
+            # If the file is a PDF, load it using PyPDFLoader
+            loader = PyPDFLoader(file_path)
+            documents += loader.load_and_split()
+        
+        elif filename.endswith(".txt"):
+            # If the file is a text file, load it using TextLoader
+            loader = TextLoader(file_path)
+            documents += loader.load()
+    
+    # Split documents into manageable chunks
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     texts = text_splitter.split_documents(documents)
 
-    # Create FAISS index with OpenAI embeddings
+    # Create an embedding model and FAISS vector store
     embedding_model = OpenAIEmbeddings(api_key=openai_api_key)
     vectorstore = FAISS.from_documents(texts, embedding_model)
     
