@@ -29,8 +29,13 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
-# Path to FAISS index
-FAISS_INDEX_PATH = os.path.join(BASE_DIR, 'faiss_data/faiss_index_file.index')
+# FAISS data directory
+FAISS_DATA_DIR = os.path.join(BASE_DIR, 'faiss_data')
+FAISS_DOCS_DIR = os.path.join(FAISS_DATA_DIR, 'docs')
+FAISS_INDEX_FILE = os.path.join(FAISS_DATA_DIR, 'faiss_index_file.index')
+
+# Ensure the FAISS data directories exist
+os.makedirs(FAISS_DOCS_DIR, exist_ok=True)
 
 # OpenAI API Key
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')

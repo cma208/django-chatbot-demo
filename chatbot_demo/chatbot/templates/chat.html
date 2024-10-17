@@ -1,0 +1,29 @@
+<h1>Chatbot</h1>
+<div id="chatbox"></div>
+<form id="chat-form">
+    {% csrf_token %}
+    <input type="text" name="query" id="query">
+    <button type="submit">Send</button>
+</form>
+
+<script>
+document.getElementById('chat-form').addEventListener('submit', function(event) {
+    event.preventDefault();
+    const query = document.getElementById('query').value;
+    
+    fetch("{% url 'chatbot_view' %}", {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query })
+    })
+    .then(response => response.json())
+    .then(data => {
+        const chatbox = document.getElementById('chatbox');
+        chatbox.innerHTML += `<p><strong>You:</strong> ${query}</p>`;
+        chatbox.innerHTML += `<p><strong>Bot:</strong> ${data.response}</p>`;
+    });
+});
+</script>
