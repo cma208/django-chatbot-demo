@@ -2,106 +2,161 @@ import os
 import pickle
 import mimetypes
 import faiss
+import time
 
 from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.prompts import ChatPromptTemplate
 from langchain.chains import LLMChain
+from langchain_community.vectorstores import FAISS
 from langchain_community.chat_models import ChatOpenAI
 from chatbot_demo.settings import *
-from .models import Docs
+from .models import Docs, DocThemes
 from openai import OpenAIError
 
 
 from PyPDF2 import PdfReader
 from docx import Document as DocxDocument
 
-faiss_index = None  # Global FAISS index placeholder
+recursive_text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
+llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo", openai_api_key=OPENAI_API_KEY)
 
-# Generate response using LangChain and FAISS
-def generate_response(user_query, faiss_index):
+# Function to load FAISS index and perform a search
+def query_faiss_index(query, index_name):
+    doc_path = os.path.join(FAISS_INDEX_FILE, index_name)
+    
+    if not os.path.exists(os.path.join(doc_path, "index.faiss")):
+        raise ValueError(f"FAISS index for {index_name} does not exist.")
 
-    # Generate the embedding for the user query
-    embedding_model = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
-    query_embedding = embedding_model.embed_query(user_query)  # Converts plain text query to embedding
+    # Load the existing FAISS index
+    faiss_index = FAISS.load_local(doc_path, embeddings, allow_dangerous_deserialization=True)
+    
+    # Perform a similarity search
+    retrieved_docs = faiss_index.similarity_search(query, k=5)  # Retrieve top 5 relevant chunks
+    
+    return retrieved_docs
 
-    # Retrieve relevant documents from FAISS
-    relevant_docs = faiss_index.similarity_search(query_embedding)
-
-    if not relevant_docs:
-        return "No relevant documents found. Please try rephrasing your query."
-
-    # Prepare prompt and context from retrieved documents
-    context = '\n\n'.join([doc.page_content for doc in relevant_docs])
-
-    prompt_template = ChatPromptTemplate.from_template(
-        "Answer the question based on this context: {context}\nQuestion: {question}"
+def generate_answer(question, retrieved_docs):
+    # Combine the content of the retrieved docs
+    context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+    
+    # Prepare a prompt to pass to the LLM
+    template = ChatPromptTemplate.from_template(
+        template="Answer the question based on the following context:\n{context}\n\nQuestion: {question}\nAnswer:"
     )
     
-    # Generate response using the OpenAI LLM
-    llm = ChatOpenAI(api_key=OPENAI_API_KEY, temperature=0, model="gpt-3.5-turbo")
-    chain = LLMChain(llm=llm, prompt=prompt_template)
+    chain = LLMChain(llm=llm, prompt=template, output_parser=StrOutputParser())
+    
+    # Generate an answer using the LLM
+    answer = chain.run({"context": context, "question": question})
+    
+    return answer
 
-    # Run the LangChain to get the response
+def get_answer_from_index(question, index_name):
     try:
-        response = chain.run({"context": context, "question": user_query})
-    except OpenAIError as e:
-        response = "There was an issue connecting to the OpenAI API. Please try again."
+        # Step 1: Query the FAISS index to retrieve relevant document chunks
+        retrieved_docs = query_faiss_index(question, index_name)
+        
+        # Step 2: Generate an answer based on the retrieved chunks
+        answer = generate_answer(question, retrieved_docs)
+        
+        return answer
     except Exception as e:
-        response = f"An error occurred while generating a response: {str(e)}"
+        print(f"An error occurred while generating the answer: {e}")
+        return "I am unable to answer that question at the moment."
     
-    return response
-
-# Load FAISS index from file
-def load_faiss():
-    global faiss_index
-
-    # If the FAISS index is already loaded, return it
-    if faiss_index is not None:
-        print("Using existing FAISS index.")
-        return faiss_index
-
-    # Check if FAISS index file exists
-    if os.path.exists(FAISS_INDEX_FILE):
-        # Load FAISS index from file
-        index = faiss.read_index(FAISS_INDEX_FILE)
-        embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
-        faiss_index = FAISS(index, embeddings)
-        print("FAISS index loaded from file.")
-
-    else:
-        raise FileNotFoundError("FAISS index file not found. Please generate the index first.")
-
-    return faiss_index
-
 # Generate FAISS index and save it to file
-def generate_faiss():
-    docs = Docs.objects.all()
-    texts = []
+def generate_faiss_with_retry(index_id, index_name):
+    try:
+        return generate_faiss(index_id, index_name)
+    except OpenAIError as api_error:
+        print(f"Error interacting with OpenAI: {api_error}")
+        time.sleep(2)  # Optional: Add delay before retrying
+        return generate_faiss(index_id, index_name)  # Retry once more
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return []
     
-    # Split documents into manageable chunks
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+def generate_faiss(index_id,index_name):
     
-    for doc in docs:
-        file_path = os.path.join(BASE_DIR, doc.file.name)
-        
-        # Extract the text based on file type
-        content = extract_text(file_path)
-        
-        # Split the content into chunks
-        chunks = text_splitter.split_text(content)
-        texts.extend(chunks)
-    
-    # Create FAISS index with embeddings
-    embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
-    faiss_index = FAISS.from_texts(texts, embeddings)
-    
-    # Save FAISS index to file
-    faiss.write_index(faiss_index.index, FAISS_INDEX_FILE)
-    print("FAISS index generated and saved to file.")
+    # Theme index filter
+    doc_theme = DocThemes.objects.filter(id=index_id).first()
 
-    return faiss_index
+    # Check if the theme exists by ID or name, and create a new one if not found
+    doc_theme = DocThemes.objects.filter(id=index_id).first()
+    if not doc_theme:
+        if index_name == "":
+            raise ValueError("WrongIndex: The specified index does not exist.")
+        else:
+            print(f"Storing in new index: {index_name}")
+            try:
+                # Create a new theme in the database
+                doc_theme = DocThemes.objects.create(theme=index_name)
+            except Exception as e:
+                print(f"An unexpected error occurred: {e}")
+                return []
+
+    index_id = doc_theme.id
+    index_name = doc_theme.theme
+
+    # Create a new index directory if it doesn't exist
+    doc_path = os.path.join(FAISS_INDEX_FILE, index_name)
+    os.makedirs(doc_path, exist_ok=True)
+
+    docs = Docs.objects.filter(theme__id=index_id, faiss_loaded=False)
+    file_names = []  # To keep track of newly added file names
+
+    all_documents = []
+    for doc in docs:
+        file_path = os.path.join(BASE_DIR, doc.file.name)  # Get the actual file path
+        content = robust_extract_text(file_path)  # Extract text based on file type
+        
+        # Add the file name to the list
+        file_names.append(doc.file.name)
+        
+        # Create document chunks
+        book_documents = recursive_text_splitter.create_documents([content])
+            
+        # Clean and prepare documents
+        book_documents = [
+            Document(page_content=text.page_content.replace("\n", " ").replace(".", "").replace("-", ""))
+            for text in book_documents
+        ]
+        all_documents.extend(book_documents)
+
+        if all_documents:
+            # Load existing FAISS index and merge new content
+            if os.path.exists(os.path.join(doc_path, "index.faiss")):
+                old_docsearch = FAISS.load_local(doc_path, embeddings, allow_dangerous_deserialization=True)
+                new_docsearch = FAISS.from_documents(all_documents, embeddings)
+                new_docsearch.merge_from(old_docsearch)
+            else:
+                new_docsearch = FAISS.from_documents(all_documents, embeddings)
+
+            # Save the updated index
+            new_docsearch.save_local(doc_path)
+
+            # Mark the processed documents as loaded in the database
+            Docs.objects.filter(id__in=[doc.id for doc in docs]).update(faiss_loaded=True)
+
+    return file_names
+
+def robust_extract_text(file_path):
+    try:
+        return extract_text(file_path)
+    except ValueError as e:
+        print(f"Error while extracting text from {file_path}: {str(e)}")
+        return "Failed to process document."
+    except OpenAIError as api_error:
+        print(f"OpenAI API Error: {api_error}")
+        # Optional: You can set a retry or fallback action here
+        return "There was an issue with the language model. Please try again later."
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        return "An unexpected error occurred. Please check the system logs."
 
 def extract_text(file_path):
     mime_type, _ = mimetypes.guess_type(file_path)

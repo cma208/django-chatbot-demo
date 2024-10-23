@@ -7,7 +7,7 @@ class DocThemes(models.Model):
 
 class PartitonPypes(models.Model):
     id = models.AutoField(primary_key=True)
-    type = models.CharField(max_length=3, null=False)
+    type = models.CharField(max_length=20, null=False)
 
 class Docs(models.Model):
     id = models.AutoField(primary_key=True)
@@ -15,8 +15,9 @@ class Docs(models.Model):
     uploaded_at = models.DateTimeField(auto_now_add=True)
     author = models.CharField(max_length=255, null=True, blank=True)
     title = models.CharField(max_length=255, null=True, blank=True)
-    theme = models.ForeignKey(DocThemes)
-    partition = models.ForeignKey(PartitonPypes)
+    theme = models.ForeignKey(DocThemes, on_delete=models.PROTECT)
+    partition = models.ForeignKey(PartitonPypes, on_delete=models.PROTECT) # TODO: In case of implement different partition ratios
+    faiss_loaded = models.BooleanField(default=False, null=False, blank=False)
     
     def __str__(self):
         return self.title or self.file.name

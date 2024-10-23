@@ -2,13 +2,13 @@ from django.shortcuts import render, redirect
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
 from .models import Docs, ChatSession, ChatMessage
-from .langchain_bot import load_faiss, generate_response
+# from .langchain_bot import load_faiss, generate_response
 import uuid
 
 # Initialize FAISS index once globally
 faiss_index = None
 
-@login_required
+#@login_required
 def upload_document(request):
     if request.method == 'POST':
         file = request.FILES['file']
@@ -17,7 +17,7 @@ def upload_document(request):
     
     return render(request, 'upload.html')
 
-@login_required
+#@login_required
 def chatbot_view(request):
     global faiss_index
     if request.method == 'POST':
@@ -33,13 +33,13 @@ def chatbot_view(request):
         )
         
         # Ensure FAISS index is initialized
-        if faiss_index is None:
-            faiss_index = load_faiss()
+        # if faiss_index is None:
+            # faiss_index = load_faiss()
 
         # Generate response using FAISS and LangChain
-        response = generate_response(user_query, faiss_index)
+        # response = generate_response(user_query, faiss_index)
         
-        ChatMessage.objects.create(session=chat_session, message=user_query, response=response)
-        return JsonResponse({'response': response})
+        # ChatMessage.objects.create(session=chat_session, message=user_query, response=response)
+        # return JsonResponse({'response': response})
     
-    return render(request, 'chat.html')
+    # return render(request, 'chat.html')
