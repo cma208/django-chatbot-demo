@@ -13,7 +13,7 @@ from langchain.chains import LLMChain
 from langchain_community.vectorstores import FAISS
 from langchain_community.chat_models import ChatOpenAI
 from chatbot_demo.settings import *
-from .models import Docs, DocThemes
+from .models import Docs, DocThemes, ChatSession, ChatMessage
 from openai import OpenAIError
 
 
@@ -23,6 +23,38 @@ from docx import Document as DocxDocument
 recursive_text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
 embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
 llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo", openai_api_key=OPENAI_API_KEY)
+
+# Main logic
+def get_answer_from_index_with_memory(question, index_name, session_id, max_context_messages=10):
+    try:
+        # Retrieve the chat session
+        session = ChatSession.objects.get(session_id=session_id)
+        
+        # Retrieve only the most recent 'max_context_messages' from the session
+        recent_messages = ChatMessage.objects.filter(session=session).order_by('-created_at')[:max_context_messages]
+        
+        # Reverse the order to maintain the correct conversation flow
+        recent_messages = reversed(recent_messages)
+        
+        # Compile recent conversation history
+        context_messages = list(recent_messages)
+        
+        # Step 1: Query the FAISS index to retrieve relevant document chunks
+        retrieved_docs = query_faiss_index(question, index_name)
+        
+        # Step 2: Generate an answer based on the retrieved chunks and past conversation context
+        answer = generate_answer(question, retrieved_docs, context_messages)
+        
+        # Save the new user question and answer to the database
+        ChatMessage.objects.create(session=session, message=question, response=answer)
+        
+        return answer
+    except ChatSession.DoesNotExist:
+        print(f"Session with ID {session_id} not found.")
+        return "Session not found."
+    except Exception as e:
+        print(f"An error occurred while generating the answer: {e}")
+        return "I am unable to answer that question at the moment."    
 
 # Function to load FAISS index and perform a search
 def query_faiss_index(query, index_name):
@@ -39,35 +71,33 @@ def query_faiss_index(query, index_name):
     
     return retrieved_docs
 
-def generate_answer(question, retrieved_docs):
+def generate_answer(question, retrieved_docs, context_messages):
     # Combine the content of the retrieved docs
-    context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+    doc_context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+    
+    # Build context from past user messages
+    message_context = "\n".join([
+        f"User: {msg.message}\nAI: {msg.response}" for msg in context_messages
+    ])
     
     # Prepare a prompt to pass to the LLM
+    # The context now includes both the retrieved documents and past conversation history
     template = ChatPromptTemplate.from_template(
-        template="Answer the question based on the following context:\n{context}\n\nQuestion: {question}\nAnswer:"
+        template=(
+            "You are a helpful chatbot assistant, not related to any doc, developed by Carlos Machiado Ardiles. Refer to the context from the past interactions below to answer the new question if needed or asked.\n"
+            "Past Conversation:\n{message_context}\n\n"
+            "Relevant Doc Information:\n{doc_context}\n\n"
+            "Question: {question}\nAnswer:"
+        )
     )
     
     chain = LLMChain(llm=llm, prompt=template, output_parser=StrOutputParser())
     
     # Generate an answer using the LLM
-    answer = chain.run({"context": context, "question": question})
+    answer = chain.run({"message_context": message_context, "doc_context": doc_context, "question": question})
     
     return answer
 
-def get_answer_from_index(question, index_name):
-    try:
-        # Step 1: Query the FAISS index to retrieve relevant document chunks
-        retrieved_docs = query_faiss_index(question, index_name)
-        
-        # Step 2: Generate an answer based on the retrieved chunks
-        answer = generate_answer(question, retrieved_docs)
-        
-        return answer
-    except Exception as e:
-        print(f"An error occurred while generating the answer: {e}")
-        return "I am unable to answer that question at the moment."
-    
 # Generate FAISS index and save it to file
 def generate_faiss_with_retry(index_id, index_name):
     try:
