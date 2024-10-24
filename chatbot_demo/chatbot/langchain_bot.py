@@ -5,13 +5,12 @@ import faiss
 import time
 
 from langchain_openai import OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.prompts import ChatPromptTemplate
-from langchain.chains import LLMChain
 from langchain_community.vectorstores import FAISS
-from langchain_community.chat_models import ChatOpenAI
 from chatbot_demo.settings import *
 from .models import Docs, DocThemes, ChatSession, ChatMessage
 from openai import OpenAIError
@@ -84,17 +83,22 @@ def generate_answer(question, retrieved_docs, context_messages):
     # The context now includes both the retrieved documents and past conversation history
     template = ChatPromptTemplate.from_template(
         template=(
-            "You are a helpful chatbot assistant, not related to any doc, developed by Carlos Machiado Ardiles. Refer to the context from the past interactions below to answer the new question if needed or asked.\n"
+            "You are a helpful chatbot assistant, not related to any doc, developed by Carlos Machiado Ardiles. "
+            "Refer to the context from the past interactions below to answer the new question if needed or asked.\n"
             "Past Conversation:\n{message_context}\n\n"
             "Relevant Doc Information:\n{doc_context}\n\n"
             "Question: {question}\nAnswer:"
         )
     )
     
-    chain = LLMChain(llm=llm, prompt=template, output_parser=StrOutputParser())
+    sequence = template | llm | StrOutputParser()
     
-    # Generate an answer using the LLM
-    answer = chain.run({"message_context": message_context, "doc_context": doc_context, "question": question})
+    # Generate an answer using the sequence
+    answer = sequence.invoke({
+        "message_context": message_context,
+        "doc_context": doc_context,
+        "question": question
+    })
     
     return answer
 
