@@ -1,4 +1,4 @@
-# Chatbot Demo with Session Management and Information Retrieval in Django
+# API Chatbot Demo with Session Management and Information Retrieval in Django
 
 RAGBot is an advanced chatbot system that combines Retrieval-Augmented Generation (RAG) with language models to provide accurate, document-based responses. Developed using Django, and integrating technologies like LangChain, OpenAI, and FAISS, this project enables seamless integration of language models with specific data sources, maintaining coherent context across chat sessions.
 
