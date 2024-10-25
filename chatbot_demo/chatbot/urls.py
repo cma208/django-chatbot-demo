@@ -1,7 +1,11 @@
 from django.urls import path
-from . import views
+from .views import *
 
-urlpatterns = [
-    path('upload/', views.upload_document, name='document_upload'),
-    path('chat/', views.chatbot_view, name='chatbot_view'),
+urlpatterns = [    
+    # Only get and post
+    path('chat/', Chat.as_view(), name='chat'),
+    path('messages/', Messages.as_view(), name='messages'),
+    path('session/', Session.as_view(), name='sessions'),
+    path('themes/', Themes.as_view(), name='themes'),
+    path('partitions/', Partitions.as_view(), name='partitions'),
 ]
