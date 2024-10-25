@@ -27,7 +27,7 @@ llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo", openai_api_key=OPENAI_API
 def get_answer_from_index_with_memory(question, index_name, session_id, max_context_messages=10):
     try:
         # Retrieve the chat session
-        session = ChatSession.objects.get(session_id=session_id)
+        session = ChatSession.objects.get(id=session_id)
         
         # Retrieve only the most recent 'max_context_messages' from the session
         recent_messages = ChatMessage.objects.filter(session=session).order_by('-created_at')[:max_context_messages]
